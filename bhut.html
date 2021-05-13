@@ -1,0 +1,128 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <title>barnes the hutt</title>
+        <style>
+         #sheet-container {
+             width: 600px;
+             height: 600px;
+             border: 1px solid black;
+             background: black;
+         }
+        </style>
+    </head>
+    <body>
+        <h1>Barnes the Hutt</h1>
+        Click to add some bodies, then click start simulation.<br> You can set the
+        mass of the body added on click with the slider below.<br> Stopping the
+        simulation clears the canvas. Take care!<br>
+        <div id="sheet-container">
+            <canvas id="sheet" width="600" height="600"></canvas>
+        </div>
+        <button id="start-button">start simulation</button>
+        <button id="stop-button">stop simulation</button><br>
+        mass size: <input type="range" min="1" max="100" value="1" class="slider" id="mass"><span id="mass_text">1</span>kg<br>
+        <!-- set simulation speed: <input type="range" min="1" max="100" value="1" class="slider" id="simspeed"><br> -->
+        <!-- canvas size: <input type="range" min="250" max="4000" value="250" class="slider" id="simsize"><br> -->
+    </body>
+
+    <script src="//cdnjs.cloudflare.com/ajax/libs/ramda/0.25.0/ramda.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/4.4.0/fabric.min.js"></script>
+    <script>
+     var canvas = new fabric.Canvas('sheet');
+     var start_button = document.getElementById("start-button");
+     var stop_button = document.getElementById("stop-button");
+     var mass_slider = document.getElementById("mass");
+     var mass_output = document.getElementById("mass_text");
+     var speed_slider = document.getElementById("simspeed");
+     // var canvas_slider = document.getElementById("simsize");
+     // var sheet_container = document.getElementById("sheet-container");
+     //
+     // canvas_slider.oninput = function () {
+     //     sheet_container.style.width = canvas_slider.value;
+     //     sheet_container.style.height = canvas_slider.value;
+     //     canvas.setHeight(canvas_slider.value);
+     //     canvas.setWidth(canvas_slider.value);
+     //     canvas.renderAll();
+     // };
+
+
+     mass_output.innerHTML = mass_slider.value; // Display the default slider value
+
+     canvas.on("mouse:down", function(o) {
+         var pointer = canvas.getPointer(o.e);
+         var point = new fabric.Circle({
+                         radius: mass_slider.value, fill: 'green', left: pointer.x, top: pointer.y
+                     });
+         canvas.add(point);
+     });
+
+     canvas.isDrawingMode = false;
+     canvas.freeDrawingBrush.width = 1;
+     canvas.freeDrawingBrush.color = "#00FF00";
+
+     // Update the current slider value (each time you drag the slider handle)
+
+     mass_slider.oninput = function() {
+         canvas.freeDrawingBrush.width = this.value;
+         mass_output.innerHTML = mass_slider.value;
+         console.log(canvas.toJSON());
+     };
+
+     var sock = new WebSocket("ws://localhost:5000");
+     // websocket
+     sock.onmessage = function (event) {
+
+         var msg = JSON.parse(event.data);
+         console.log(msg);
+         switch (msg.type) {
+             case "stop-ok":
+                 console.log("stopped!");
+                 canvas.clear();
+                 break;
+             case "ack":
+                 sock.send(JSON.stringify({ "type": "poll", "data": null}));
+                 break;
+             case "update":
+                 canvas.clear();
+                 for (var i = 0; i < msg.data.length; i++) {
+                     var body = msg.data[i];
+                     var point = new fabric.Circle({
+                         radius: body.mass, fill: 'green', left: body.position[0], top: body.position[1]
+                     });
+                     canvas.add(point);
+                 };
+                 sock.send(JSON.stringify({ "type": "poll", "data": null}));
+                 break;
+             default:
+                 console.log("defaulted on " + g.type);
+                 break;
+         };
+     };
+
+     var bodies_of_canvas = function (c) {
+         var bods = [];
+         for (var i = 0; i < canvas.getObjects().length; i++) {
+             var bod = canvas.getObjects()[i];
+             bods.push({
+                 mass: parseInt(bod.radius),
+                 position: [bod.left, bod.top],
+                 velocity: [0, 0]
+             });
+         }
+         return bods;
+     }
+
+     start_button.onclick = function () {
+         var bs = bodies_of_canvas(canvas);
+         var msg = { "type": "start", "data": bs };
+         sock.send(JSON.stringify(msg));
+     };
+
+     stop_button.onclick = function() {
+         var msg = { "type" : "stop", "data" : null };
+         sock.send(JSON.stringify(msg));
+     };
+
+    </script>
+</html>
