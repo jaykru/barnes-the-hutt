@@ -1,6 +1,4 @@
 (declaim (optimize (speed 0) (space 0) (debug 3)))
-(ignore-errors (ql-dist:install-dist "http://dist.ultralisp.org/"
-                                     :prompt nil))
 (ql:quickload '(:alexandria
                 :array-operations
                 :clack
@@ -11,8 +9,10 @@
                 :cl-mpi
                 :ieee-floats
                 :lparallel
-                :cl-cpus
-                :queue))
+                :cl-cpus))
+(ignore-errors (ql-dist:install-dist "http://dist.ultralisp.org/"
+                                     :prompt nil))
+(ql:quickload :queue)
 (use-package :queue)
 
 (defclass body ()
@@ -60,8 +60,7 @@
              (v1y (elt v1 1))
              (v2x (elt v2 0))
              (v2y (elt v2 1)))
-        `#(,(+ v1x v2x) ,(+ v1y v2y)))
-      ))
+        `#(,(+ v1x v2x) ,(+ v1y v2y)))))
 
 (defun v/ (v1 k)
   "Divides a vector by a non-zero scalar"
@@ -344,6 +343,7 @@
    we have exceeded the length of the bits."
   (handler-case (aref bits n)
     (error (c)
+      (declare (ignore c))
       0)))
 
 (defun radix-sort (seq &key (metric #'identity))
@@ -411,9 +411,8 @@
     ;; start by morton-sorting the bodies so we ensure we get a good quadtree
     (enqueue q `(,bodies ,top ,`(0 . ,(1- (length bodies)))))
     (loop until (or
-                 (< (/ (length (car (slot-value q 'queue::head)))
-                       4)
-                    1)
+                 (< (length (car (slot-value q 'queue::head)))
+                    4)
                  (> (+ 4 (queue-size q)) num-workers)) do
                       (let* ((first (dequeue q))
                              (bs (car first))
@@ -421,7 +420,6 @@
                              (width (ceiling (/ (length bs) 4)))
 
                              (tree (cadr first))
-                             (ex (slot-value tree 'extent))
 
                              ;; quarter the bodies for the head of the queue and make a subtree
                              ;; skeleton for each quadrant
@@ -446,29 +444,26 @@
                           (setf extent (compextent bs)))))
     (cons top (queue:queue-to-list q))))
 
-(defparameter *test-schedule* (time (schedule *test-bodies* 12)))
 (defun finish-build (skeleton my-range bodies)
   (destructuring-bind (lower . upper) my-range
     (loop for i from lower to upper do
       (insert-body skeleton (aref bodies i)))))
-
-;; (defparameter *bod-array* (map 'vector #'identity (morton-sort *test-bodies*)))
 
 (setf lparallel:*kernel* (lparallel:make-kernel (cl-cpus:get-number-of-processors)))
 (defun par-build-qtree (bodies)
   (let ((sorted (morton-sort bodies)))
     (destructuring-bind (top . chunks) (schedule sorted (cl-cpus:get-number-of-processors))
       (let ((body-array (map 'vector #'identity sorted)))
-        (lparallel:pmap 'nil
-                        #'(lambda (chunk)
-                            (destructuring-bind (bs tree range) chunk
-                              (declare (ignore bs))
-                              (finish-build tree range body-array))) chunks))
+        (lparallel:pmap nil
+                         #'(lambda (chunk)
+                             (destructuring-bind (bs tree range) chunk
+                               (declare (ignore bs))
+                               (finish-build tree range body-array)))
+                         chunks))
       top)))
 
-;; (time (morton-sort *test-bodies*))
-;; (time (par-build-qtree *test-bodies*))
-;; (time (build-qtree *test-bodies*))
+(princ "parallel bench")
+(time (par-build-qtree *test-bodies*))
 
 ;;; webapp
 (defvar *conbods* (make-hash-table))
