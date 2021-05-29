@@ -6,7 +6,6 @@
                 :cl-json
                 :trivial-open-browser
                 :websocket-driver
-                :cl-mpi
                 :ieee-floats
                 :lparallel
                 :cl-cpus))
