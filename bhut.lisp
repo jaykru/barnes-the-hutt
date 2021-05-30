@@ -409,38 +409,35 @@
          (top (make-qtree (compextent bodies))))
     ;; start by morton-sorting the bodies so we ensure we get a good quadtree
     (enqueue q `(,bodies ,top ,`(0 . ,(1- (length bodies)))))
-    (loop until (or
-                 (< (length (car (slot-value q 'queue::head)))
-                    4)
-                 (> (+ 4 (queue-size q)) num-workers)) do
-                      (let* ((first (dequeue q))
-                             (bs (car first))
-                             (start-idx (caaddr first))
-                             (width (ceiling (/ (length bs) 4)))
+    (loop until (> (+ 4 (queue-size q)) num-workers) do
+                   (let* ((first (dequeue q))
+                          (bs (car first))
+                          (start-idx (caaddr first))
+                          (width (ceiling (/ (length bs) 4)))
 
-                             (tree (cadr first))
+                          (tree (cadr first))
 
-                             ;; quarter the bodies for the head of the queue and make a subtree
-                             ;; skeleton for each quadrant
-                             (chunks (loop for i from 0 to 3
-                                           collect
-                                           (let ((subbs (subseq bs
-                                                                (* i width)
-                                                                (min (length bs) (* (1+ i) width)))))
-                                             `(,subbs ,(make-qtree (compextent subbs))
-                                                      ,`(,(+ start-idx (* i width))
-                                                         . ,(+ start-idx (min (1- (length bs))
-                                                                              (1- (* (1+ i) width))))))))))
-                        (loop for chunk in chunks
-                              do (enqueue q chunk))
-                        (with-slots (q1 q2 q3 q4 treemass treecenter extent) tree
-                          (setf q1 (cadr (nth 0 chunks)))
-                          (setf q2 (cadr (nth 1 chunks)))
-                          (setf q3 (cadr (nth 2 chunks)))
-                          (setf q4 (cadr (nth 3 chunks)))
-                          (setf treemass (compmass bs))
-                          (setf treecenter (compcenter bs))
-                          (setf extent (compextent bs)))))
+                          ;; quarter the bodies for the head of the queue and make a subtree
+                          ;; skeleton for each quadrant
+                          (chunks (loop for i from 0 to 3
+                                        collect
+                                        (let ((subbs (subseq bs
+                                                             (* i width)
+                                                             (min (length bs) (* (1+ i) width)))))
+                                          `(,subbs ,(make-qtree (compextent subbs))
+                                                   ,`(,(+ start-idx (* i width))
+                                                      . ,(+ start-idx (min (1- (length bs))
+                                                                           (1- (* (1+ i) width))))))))))
+                     (loop for chunk in chunks
+                           do (enqueue q chunk))
+                     (with-slots (q1 q2 q3 q4 treemass treecenter extent) tree
+                       (setf q1 (cadr (nth 0 chunks)))
+                       (setf q2 (cadr (nth 1 chunks)))
+                       (setf q3 (cadr (nth 2 chunks)))
+                       (setf q4 (cadr (nth 3 chunks)))
+                       (setf treemass (compmass bs))
+                       (setf treecenter (compcenter bs))
+                       (setf extent (compextent bs)))))
     (cons top (queue:queue-to-list q))))
 
 (defun finish-build (skeleton my-range bodies)
@@ -454,15 +451,18 @@
     (destructuring-bind (top . chunks) (schedule sorted (cl-cpus:get-number-of-processors))
       (let ((body-array (map 'vector #'identity sorted)))
         (lparallel:pmap nil
-                         #'(lambda (chunk)
-                             (destructuring-bind (bs tree range) chunk
-                               (declare (ignore bs))
-                               (finish-build tree range body-array)))
-                         chunks))
+                        #'(lambda (chunk)
+                            (destructuring-bind (bs tree range) chunk
+                              (declare (ignore bs))
+                              (finish-build tree range body-array)))
+                        chunks))
       top)))
 
-(princ "parallel bench")
+(format t "parallel bench")
 (time (par-build-qtree *test-bodies*))
+
+(format t "sequential bench")
+(time (build-qtree *test-bodies*))
 
 ;;; webapp
 (defvar *conbods* (make-hash-table))
