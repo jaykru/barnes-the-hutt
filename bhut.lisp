@@ -409,7 +409,9 @@
          (top (make-qtree (compextent bodies))))
     ;; start by morton-sorting the bodies so we ensure we get a good quadtree
     (enqueue q `(,bodies ,top ,`(0 . ,(1- (length bodies)))))
-    (loop until (> (+ 4 (queue-size q)) num-workers) do
+    (loop until (or
+                 (< (length (caar (slot-value q 'queue::head))) 4)
+                 (> (+ 4 (queue-size q)) num-workers)) do
                    (let* ((first (dequeue q))
                           (bs (car first))
                           (start-idx (caaddr first))
